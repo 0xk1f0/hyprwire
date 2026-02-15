@@ -48,23 +48,48 @@ parameter, a string of `"VAX"`. That's because I am a selfish asshole.
 The server must respond with `HANDSHAKE_BEGIN`, with an array of `uint`s describing versions of the protocol
 it supports. Currently, that's just `[1]`.
 
+```
+[0x02] [0x21] [0x10] [0x01] [0x01 0x00 0x00 0x00] [0x00]
+  |       |     |       |            |              |
+HS_BEGIN ARRAY  UINT  COUNT       VERSION 1        END
+```
+
 The client must send `HANDSHAKE_ACK` with the chosen version, that is `1`.
+
+```
+[0x03] [0x10] [0x01 0x00 0x00 0x00] [0x00]
+  |      |              |             |
+HS_ACK  UINT        VERSION 1        END
+```
+
 
 The server must reply with `HANDSHAKE_PROTOCOLS`. This contains an array of strings with supported
 protocols. For example, if the server supports `my_protocol` at revision 2, and `my_other_protocol` at revision 1,
 it should reply with `["my_protocol@2", "my_other_protocol@1"]`. As you can see, the revision is appended
 with an `@[ver]`.
 
+```
+[0x04] [0x21] [0x20] [0x01] [0x0C] [my_protocol@2] [0x00]
+  |       |      |      |      |           |          |
+HS_PROT  ARRAY  VARC  COUNT   LEN       CONTENT      END
+```
+
 Once this is sent, the handshake is considered complete.
 
 ## Once connection is alive
 
 Once the connection is alive, we can proceed with regular communication. In order to bind to a protocol exposed,
-you must send a `BIND_PROTOCOL` with a `sequence` and a protocol spec string, e.g. `my_protocol@2`.
+You must send a `BIND_PROTOCOL` with a `sequence` and a protocol spec string. The spec string is to be send without the version specifier e.g. if the full protocol is `my_protocol@2` only send `my_protocol`.
+The version needs to be sent as a separate UINT before the end of a message.
 
-> ![NOTE]
-> A sequence is a u32 that must not repeat. Keep a sequence counter, and every time you need a seq, send
-> last_seq + 1.
+> [!NOTE]
+> A sequence is a u32 that must not repeat. Keep a sequence counter, and every time you need a seq, send last_seq + 1.
+
+```
+[0x0A] [0x10] [0x01 0x00 0x00 0x00] [0x20] [0x0C] [my_protocol] [0x10] [0x01 0x00 0x00 0x00] [0x00]
+  |       |             |             |      |           |         |             |             |
+B_PROT  UINT         SEQUENCE       VARC    LEN       CONTENT     UINT        VERSION         END
+```
 
 Once the bind is successful on the server, the server will respond with `NEW_OBJECT`. This will contain
 an object handle id and the client-provided sequence. This object handle id can be used to interact
@@ -85,6 +110,14 @@ s2c: C
 ```
 
 method A = ID 0, method B = ID 0, method C = ID 1.
+
+For example, to use the first method on the first objet handle, you would send the object handle with its corresponding ID, then a UINT with the method's ID and finally a SEQ with the non-repeting sequence.
+
+```
+[0x64] [0x22] [0x01 0x00 0x00 0x00] [0x10] [0x00 0x00 0x00 0x00] [0x13] [0x00 0x00 0x00 0x00] [0x00]
+  |      |              |             |              |             |              |             |
+G_PROT  OBJ          OBJECT_ID       UINT         METHOD_ID       SEQ          SEQUENCE        END
+```
 
 ### Fatal errors
 
